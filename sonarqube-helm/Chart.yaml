@@ -1,0 +1,20 @@
+apiVersion: v2
+name: sonarqube
+description: A production-ready SonarQube Community Edition Helm chart for K3s with Let's Encrypt SSL support
+type: application
+version: 1.0.0
+appVersion: "26.3.0.120487"
+keywords:
+  - sonarqube
+  - code-quality
+  - static-analysis
+  - code-review
+  - postgresql
+  - k3s
+  - letsencrypt
+home: https://github.com/cagatayuresin/awesome-k3s-sonarqube-helm
+sources:
+  - https://github.com/cagatayuresin/awesome-k3s-sonarqube-helm
+maintainers:
+  - name: Cagatay Uresin
+    url: https://github.com/cagatayuresin

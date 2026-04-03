@@ -1,0 +1,39 @@
+{{- if .Values.persistence.sonarqube.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sonarqube.fullname" . }}-sonarqube
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sonarqube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sonarqube
+spec:
+  accessModes:
+    - {{ .Values.persistence.sonarqube.accessMode }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.sonarqube.size }}
+{{- end }}
+---
+{{- if .Values.persistence.postgres.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sonarqube.fullname" . }}-postgres
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sonarqube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  accessModes:
+    - {{ .Values.persistence.postgres.accessMode }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.postgres.size }}
+{{- end }}

@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "sonarqube.fullname" . }}-postgres
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sonarqube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ include "sonarqube.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sonarqube.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "sonarqube.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      securityContext:
+        fsGroup: {{ .Values.securityContext.postgres.fsGroup }}
+      initContainers:
+        # Fix volume permissions for local-path provisioner
+        - name: init-chmod-data
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              chown -R 999:999 /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            {{- if .Values.persistence.postgres.enabled }}
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            {{- end }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube.fullname" . }}
+                  key: postgres-password
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          {{- if .Values.healthChecks.postgres.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgres.user | quote }}
+                - -d
+                - {{ .Values.postgres.database | quote }}
+            initialDelaySeconds: {{ .Values.healthChecks.postgres.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthChecks.postgres.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthChecks.postgres.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthChecks.postgres.failureThreshold }}
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgres.user | quote }}
+                - -d
+                - {{ .Values.postgres.database | quote }}
+            initialDelaySeconds: {{ .Values.healthChecks.postgres.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthChecks.postgres.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthChecks.postgres.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthChecks.postgres.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.persistence.postgres.enabled }}
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            {{- end }}
+      volumes:
+        {{- if .Values.persistence.postgres.enabled }}
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: {{ include "sonarqube.fullname" . }}-postgres
+        {{- end }}

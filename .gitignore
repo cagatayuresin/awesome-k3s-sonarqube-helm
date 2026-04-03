@@ -1,0 +1,23 @@
+# Dependencies
+charts/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Helm
+*.tgz
+
+# n8n reference (remove after development)
+awesome-k3s-n8n-helm-main/

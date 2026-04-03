@@ -1,0 +1,165 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sonarqube.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "sonarqube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sonarqube
+spec:
+  replicas: {{ .Values.sonarqube.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sonarqube.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sonarqube
+  template:
+    metadata:
+      labels:
+        {{- include "sonarqube.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sonarqube
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: {{ .Values.securityContext.sonarqube.fsGroup }}
+      initContainers:
+        {{- if .Values.sysctl.enabled }}
+        # Required: Set vm.max_map_count for Elasticsearch
+        - name: init-sysctl
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - sysctl -w vm.max_map_count={{ .Values.sysctl.vmMaxMapCount }}
+          securityContext:
+            privileged: true
+        {{- end }}
+        # Fix volume permissions for SonarQube
+        - name: init-chmod-data
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              chown -R 1000:0 /opt/sonarqube/data
+              chown -R 1000:0 /opt/sonarqube/extensions
+              chown -R 1000:0 /opt/sonarqube/logs
+              chown -R 1000:0 /opt/sonarqube/temp
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            {{- if .Values.persistence.sonarqube.enabled }}
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/data
+              subPath: data
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/extensions
+              subPath: extensions
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/logs
+              subPath: logs
+            {{- end }}
+            - name: sonarqube-temp
+              mountPath: /opt/sonarqube/temp
+      containers:
+        - name: sonarqube
+          image: "{{ .Values.sonarqube.image.repository }}:{{ .Values.sonarqube.image.tag }}"
+          imagePullPolicy: {{ .Values.sonarqube.image.pullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.sonarqube.runAsUser }}
+            runAsGroup: {{ .Values.securityContext.sonarqube.runAsGroup }}
+          env:
+            # Database Connection
+            - name: SONAR_JDBC_URL
+              value: "jdbc:postgresql://{{ include "sonarqube.fullname" . }}-postgres:5432/{{ .Values.postgres.database }}"
+            - name: SONAR_JDBC_USERNAME
+              value: {{ .Values.postgres.user | quote }}
+            - name: SONAR_JDBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube.fullname" . }}
+                  key: postgres-password
+
+            # JVM Options
+            - name: SONAR_WEB_JAVAOPTS
+              value: {{ .Values.sonarqube.jvmOpts.web | quote }}
+            - name: SONAR_CE_JAVAOPTS
+              value: {{ .Values.sonarqube.jvmOpts.ce | quote }}
+            - name: SONAR_SEARCH_JAVAOPTS
+              value: {{ .Values.sonarqube.jvmOpts.search | quote }}
+
+            # Timezone
+            - name: TZ
+              value: {{ .Values.sonarqube.timezone | quote }}
+
+            {{- if .Values.sonarqube.extraEnv }}
+            {{- toYaml .Values.sonarqube.extraEnv | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 9000
+              protocol: TCP
+          {{- if .Values.healthChecks.sonarqube.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.healthChecks.sonarqube.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.healthChecks.sonarqube.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthChecks.sonarqube.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthChecks.sonarqube.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthChecks.sonarqube.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.healthChecks.sonarqube.path }}
+              port: http
+            periodSeconds: {{ .Values.healthChecks.sonarqube.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthChecks.sonarqube.timeoutSeconds }}
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.healthChecks.sonarqube.path }}
+              port: http
+            periodSeconds: {{ .Values.healthChecks.sonarqube.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthChecks.sonarqube.timeoutSeconds }}
+            failureThreshold: 3
+          {{- end }}
+          resources:
+            {{- toYaml .Values.sonarqube.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.persistence.sonarqube.enabled }}
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/data
+              subPath: data
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/extensions
+              subPath: extensions
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/logs
+              subPath: logs
+            {{- end }}
+            - name: sonarqube-temp
+              mountPath: /opt/sonarqube/temp
+      volumes:
+        {{- if .Values.persistence.sonarqube.enabled }}
+        - name: sonarqube-data
+          persistentVolumeClaim:
+            claimName: {{ include "sonarqube.fullname" . }}-sonarqube
+        {{- end }}
+        - name: sonarqube-temp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,179 @@
+# =============================================================================
+# SonarQube Helm Chart - Production Configuration for K3s
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Namespace Configuration
+# -----------------------------------------------------------------------------
+namespace: sonarqube
+createNamespace: true
+
+# -----------------------------------------------------------------------------
+# Domain Configuration
+# -----------------------------------------------------------------------------
+domain: example.com
+# Set to true to also handle www.domain
+enableWwwRedirect: true
+
+# -----------------------------------------------------------------------------
+# Let's Encrypt SSL Configuration
+# -----------------------------------------------------------------------------
+letsencrypt:
+  # Email for certificate notifications (required)
+  email: admin@example.com
+  # Use "https://acme-staging-v02.api.letsencrypt.org/directory" for testing
+  # Use "https://acme-v02.api.letsencrypt.org/directory" for production
+  server: https://acme-v02.api.letsencrypt.org/directory
+  # Create ClusterIssuer resource
+  createClusterIssuer: true
+  # ClusterIssuer name (use existing if createClusterIssuer is false)
+  clusterIssuerName: letsencrypt-prod
+
+# -----------------------------------------------------------------------------
+# SonarQube Configuration
+# -----------------------------------------------------------------------------
+sonarqube:
+  image:
+    repository: sonarqube
+    tag: "26.3.0.120487-community"
+    pullPolicy: IfNotPresent
+
+  replicas: 1
+
+  # Resource limits and requests
+  # SonarQube requires minimum 2Gi RAM due to embedded Elasticsearch
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+
+  # JVM options for SonarQube web server
+  jvmOpts:
+    web: "-Xmx1g -Xms512m"
+    ce: "-Xmx1g -Xms512m"
+    search: "-Xmx512m -Xms512m"
+
+  # Timezone
+  timezone: "Europe/Istanbul"
+
+  # SonarQube admin credentials (default: admin/admin)
+  # It is strongly recommended to change the password after first login
+  admin:
+    # Set to true to force password change via environment variable
+    forcePasswordChange: false
+
+  # Extra environment variables (optional)
+  extraEnv: []
+
+# -----------------------------------------------------------------------------
+# PostgreSQL Configuration
+# -----------------------------------------------------------------------------
+postgres:
+  image:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+
+  # Database credentials (CHANGE THESE IN PRODUCTION!)
+  database: sonarqube
+  user: sonarqube
+  password: "changeme-postgres-password"
+
+  # Resource limits and requests
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+# -----------------------------------------------------------------------------
+# Persistence Configuration
+# -----------------------------------------------------------------------------
+persistence:
+  # Storage class (local-path is default for k3s)
+  storageClass: local-path
+
+  sonarqube:
+    enabled: true
+    size: 10Gi
+    accessMode: ReadWriteOnce
+
+  postgres:
+    enabled: true
+    size: 10Gi
+    accessMode: ReadWriteOnce
+
+# -----------------------------------------------------------------------------
+# Ingress Configuration
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+  # Additional annotations can be added here
+
+# -----------------------------------------------------------------------------
+# Service Configuration
+# -----------------------------------------------------------------------------
+service:
+  sonarqube:
+    type: ClusterIP
+    port: 9000
+
+  postgres:
+    type: ClusterIP
+    port: 5432
+
+# -----------------------------------------------------------------------------
+# Security Context
+# -----------------------------------------------------------------------------
+securityContext:
+  sonarqube:
+    # SonarQube runs as user 1000 (sonarqube) inside the container
+    runAsUser: 1000
+    runAsGroup: 0
+    fsGroup: 0
+
+  postgres:
+    fsGroup: 999
+
+# -----------------------------------------------------------------------------
+# Sysctl Init Container (Required for Elasticsearch)
+# -----------------------------------------------------------------------------
+sysctl:
+  enabled: true
+  # vm.max_map_count must be >= 524288 for Elasticsearch
+  vmMaxMapCount: 524288
+
+# -----------------------------------------------------------------------------
+# Health Checks
+# -----------------------------------------------------------------------------
+healthChecks:
+  sonarqube:
+    enabled: true
+    # SonarQube takes longer to start due to Elasticsearch
+    initialDelaySeconds: 120
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 10
+    # Use /api/system/status for health checks
+    path: /api/system/status
+
+  postgres:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+# -----------------------------------------------------------------------------
+# Node Selector, Tolerations, Affinity
+# -----------------------------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+affinity: {}
